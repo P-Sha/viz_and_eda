@@ -1,0 +1,130 @@
+---
+title: "Visualization & EDA class examples"
+output: github_document
+---
+
+```{r setup}
+library(tidyverse)
+library(ggridges)
+```
+
+Setting size of images in r and in the document.
+```{r}
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+```
+
+
+Load NOAA weather data.
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,            #data stored is in 10th of degree C
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Basic scatterplot
+
+```{r basic}
+ggplot(weather_df, aes(x = tmin, y = tmax)) + 
+  geom_point()
+
+```
+
+Advanced scatterplot
+
+```{r color by names}
+ggplot(weather_df, aes(x = tmin, y = tmax)) + 
+  geom_point(aes(color = name))
+```
+
+```{r add curve}
+ggplot(weather_df, aes(x = tmin, y = tmax)) + 
+  geom_point(aes(color = name), alpha = .5) +
+  geom_smooth(se = FALSE)    # standard erroe False for bettr graph.
+```
+
+```{r Names facet}
+ggplot(weather_df, aes(x = tmin, y = tmax, color = name)) + 
+  geom_point(alpha = .5) +  #alpha .5 means 50% transparent points.
+  geom_smooth(se = FALSE) + 
+  facet_grid(. ~ name)
+# dot for saying nothing defines rows, ~ means names defines columns.
+```
+
+```{r precipitation and time of year}
+ggplot(weather_df, aes(x = date, y = tmax, color = name)) + 
+  geom_point(aes(size = prcp), alpha = .5) + 
+  geom_smooth(se = FALSE) + 
+  facet_grid(. ~ name)    
+```
+
+Learning assessment: Central Park scatterplot ---------------
+
+```{r}
+weather_df %>% 
+  filter(name == "CentralPark_NY") %>% 
+  mutate(
+    tmax_fahr = tmax * (9 / 5) + 32,
+    tmin_fahr = tmin * (9 / 5) + 32) %>% 
+  ggplot(aes(x = tmin_fahr, y = tmax_fahr)) +
+  geom_point(alpha = .5) + 
+  geom_smooth(method = "lm", se = FALSE)
+
+```
+End assessment 1 ------------------------------------------------
+
+Smooth curves option: temp max vs date.
+```{r}
+ggplot(weather_df, aes(x = date, y = tmax, color = name)) + 
+  geom_smooth(se = FALSE) 
+```
+
+Univariate plots: Histograms, density plots, boxplots
+
+```{r histogram}
+ggplot(weather_df, aes(x = tmax)) + 
+  geom_histogram()
+```
+Changing bin-width, fill color
+```{r}
+ggplot(weather_df, aes(x = tmax, fill = name)) + 
+  geom_histogram(position = "dodge", binwidth = 2)
+```
+
+```{r density plots}
+ggplot(weather_df, aes(x = tmax, fill = name)) + 
+  geom_density(alpha = .4, adjust = .5, color = "blue")
+```
+
+```{r boxplots}
+ggplot(weather_df, aes(x = name, y = tmax)) + geom_boxplot()
+```
+
+```{r violin plots}
+ggplot(weather_df, aes(x = name, y = tmax)) + 
+  geom_violin(aes(fill = name), alpha = .5) + 
+  stat_summary(fun = "median", color = "blue")
+```
+
+```{r ridge plots}
+weather_df %>% 
+  ggplot(aes(x = tmin, y = name)) +
+  geom_density_ridges()
+```
+
