@@ -1,0 +1,212 @@
+---
+title: "Exploratory Analysis"
+output: github_document
+---
+
+```{r setup}
+library(tidyverse)
+library(patchwork)
+```
+
+Global settings for themes (for figures).
+```{r}
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,          #aspect ratio: height over width
+  out.width = "90%"      # figure doesn't go all the way out on full(100%) page
+)
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis", # to override ggplot default colors.
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+Load NOAA weather data, and add month variable.
+```{r}
+weather_df =  
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10,
+    month = lubridate::floor_date(date, unit = "month")) %>% #package to add month var
+  select(name, id, everything())
+```
+
+group_by name and month
+```{r}
+weather_df %>%
+  group_by(name, month)
+```
+
+Count number of observations in each month.
+```{r}
+weather_df %>%
+  group_by(month) %>%
+  summarize(n_obs = n())
+```
+
+Group and summarize by two variables
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(n_obs = n())
+```
+Or, use "count".
+```{r}
+weather_df %>%
+  count(month, name = "n_obs")
+```
+
+Summarize: number of observations in each month and number of distinct values of date in each month(e.g. feb = will have 28 days).
+```{r}
+weather_df %>%
+  group_by(month) %>%
+  summarize(
+    n_obs = n(),
+    n_days = n_distinct(date))
+```
+
+2 x 2 tables: tidy
+```{r}
+weather_df %>% 
+  mutate(
+    cold = case_when(
+      tmax <  5 ~ "cold",
+      tmax >= 5 ~ "not_cold",
+      TRUE      ~ ""
+  )) %>% 
+  filter(name != "Waikiki_HA") %>% 
+  group_by(name, cold) %>% 
+  summarize(count = n())
+```
+
+reorganize to standard (untidy)table, using pivot_wider or janitor::tabyl
+```{r}
+weather_df %>% 
+  mutate(cold = case_when(
+    tmax <  5 ~ "cold",
+    tmax >= 5 ~ "not_cold",
+    TRUE     ~ ""
+  )) %>% 
+  filter(name != "Waikiki_HA") %>% 
+  janitor::tabyl(name, cold)
+```
+
+General summaries
+```{r}
+weather_df %>%
+  group_by(month) %>%
+  summarize(
+    mean_tmax = mean(tmax),
+    mean_prec = mean(prcp, na.rm = TRUE),
+    median_tmax = median(tmax),
+    sd_tmax = sd(tmax))
+```
+Summaries with 2 variables.
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(
+    mean_tmax = mean(tmax),
+    median_tmax = median(tmax))
+```
+
+Summarize multiple columns with "across".
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(across(tmin:prcp, mean))
+```
+
+Creat a plot based on monthly summary.
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  summarize(mean_tmax = mean(tmax)) %>%
+  ggplot(aes(x = month, y = mean_tmax, color = name)) + 
+    geom_point() + geom_line() + 
+    theme(legend.position = "bottom")
+```
+
+"Mutate" with "group_by": e.g compare daily max temp to annual average max temp
+```{r}
+weather_df %>%
+  group_by(name) %>%
+  mutate(
+    mean_tmax = mean(tmax, na.rm = TRUE),
+    centered_tmax = tmax - mean_tmax) %>% 
+  ggplot(aes(x = date, y = centered_tmax, color = name)) + 
+    geom_point() 
+```
+
+Window functions: Ranking
+```{r}
+weather_df %>%
+  group_by(name, month) %>%
+  mutate(temp_ranking = min_rank(tmax)) # to get max temp within month
+
+#day with the lowest max temperature within each month:
+weather_df %>%
+  group_by(name, month) %>%
+  filter(min_rank(tmax) < 2)
+
+#three days with the highest max temperature:
+weather_df %>%
+  group_by(name, month) %>%
+  filter(min_rank(desc(tmax)) < 4)
+```
+
+Offsets:e.g. to find the day-by-day change in max temp within each station over the year.
+```{r}
+weather_df %>%
+  group_by(name) %>%
+  mutate(temp_change = tmax - lag(tmax)) # gives temp change from previous day
+
+# to quantify the day-by-day variability in max temperature, or to identify the largest one-day increase:
+weather_df %>%
+  group_by(name) %>%
+  mutate(temp_change = tmax - lag(tmax)) %>%
+  summarize(
+    temp_change_sd = sd(temp_change, na.rm = TRUE),
+    temp_change_max = max(temp_change, na.rm = TRUE))
+```
+
+Learning Assessment:Import, clean, and summarize the PULSE data to examine the mean and median at each visit. Export the results of this in a reader-friendly format.
+```{r}
+pulse_data = 
+  haven::read_sas("./data/public_pulse_data.sas7bdat") %>%
+  janitor::clean_names() %>%
+  pivot_longer(
+    bdi_score_bl:bdi_score_12m,
+    names_to = "visit", 
+    names_prefix = "bdi_score_",
+    values_to = "bdi") %>%
+  select(id, visit, everything()) %>%
+  mutate(
+    visit = replace(visit, visit == "bl", "00m"),
+    visit = factor(visit, levels = str_c(c("00", "01", "06", "12"), "m"))) %>%
+  arrange(id, visit)
+
+pulse_data %>% 
+  group_by(visit) %>% 
+  summarize(
+    mean_bdi = mean(bdi, na.rm = TRUE),
+    median_bdi = median(bdi, na.rm = TRUE)) %>% 
+  knitr::kable(digits = 3)
+```
+End assessment ------------
+
